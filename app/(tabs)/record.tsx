@@ -7,6 +7,7 @@ import { useWorkoutStore } from '@/store/workoutStore';
 import { useLibraryStore } from '@/store/libraryStore';
 import { saveWorkout } from '@/db/database';
 import ExercisePicker from '@/components/ExercisePicker';
+import WorkoutTimer from '@/components/WorkoutTimer';
 
 export default function RecordScreen() {
   const { title, exercises, setTitle, addExercise, removeExercise, addSet, removeSet, updateSet, reset } = useWorkoutStore();
@@ -40,6 +41,7 @@ export default function RecordScreen() {
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <WorkoutTimer />
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
         <Text style={styles.header}>운동 기록</Text>
 
