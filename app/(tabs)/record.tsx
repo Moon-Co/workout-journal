@@ -40,7 +40,7 @@ export default function RecordScreen() {
           }),
         });
         n.requestPermissionsAsync();
-      });
+      }).catch(() => {});
     }
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, []);
@@ -84,18 +84,20 @@ export default function RecordScreen() {
       duration
     );
 
-    if (Platform.OS !== 'web') {
-      const n = await import('expo-notifications');
-      await n.scheduleNotificationAsync({
-        content: {
-          title: '운동 완료! 💪',
-          body: '운동이 완료되었어요! 기록이 저장소에 저장됩니다.',
-        },
-        trigger: null,
-      });
-    }
-
     Alert.alert('운동 완료! 💪', `총 ${fmtElapsed(duration)} 운동했어요.`);
+
+    if (Platform.OS !== 'web') {
+      try {
+        const n = await import('expo-notifications');
+        await n.scheduleNotificationAsync({
+          content: {
+            title: '운동 완료! 💪',
+            body: '운동이 완료되었어요! 기록이 저장소에 저장됩니다.',
+          },
+          trigger: null,
+        });
+      } catch (_) {}
+    }
     reset();
     setIsActive(false);
     setElapsed(0);
