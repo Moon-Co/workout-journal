@@ -47,6 +47,11 @@ export async function getAllSessions(): Promise<WorkoutSession[]> {
   return loadSessions();
 }
 
+export async function updateSession(updated: WorkoutSession): Promise<void> {
+  const sessions = await loadSessions();
+  await saveSessions(sessions.map((s) => (s.id === updated.id ? updated : s)));
+}
+
 export async function deleteSession(id: string): Promise<void> {
   const sessions = await loadSessions();
   await saveSessions(sessions.filter((s) => s.id !== id));
