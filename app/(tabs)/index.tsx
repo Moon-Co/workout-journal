@@ -3,7 +3,7 @@ import {
   View, Text, ScrollView, TouchableOpacity,
   StyleSheet, Alert, RefreshControl,
 } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/core';
 import { getAllSessions, updateSession, deleteSession, WorkoutSession } from '@/db/database';
 import SessionEditModal from '@/components/SessionEditModal';
 
