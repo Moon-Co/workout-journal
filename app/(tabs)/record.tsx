@@ -3,11 +3,20 @@ import {
   View, Text, TextInput, TouchableOpacity,
   ScrollView, StyleSheet, Alert, KeyboardAvoidingView, Platform,
 } from 'react-native';
+import * as Notifications from 'expo-notifications';
 import { useWorkoutStore } from '@/store/workoutStore';
 import { useLibraryStore } from '@/store/libraryStore';
 import { saveWorkout } from '@/db/database';
 import WorkoutTimer from '@/components/WorkoutTimer';
 import ExercisePicker from '@/components/ExercisePicker';
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: false,
+    shouldSetBadge: false,
+  }),
+});
 
 function fmtElapsed(secs: number) {
   const m = Math.floor(secs / 60).toString().padStart(2, '0');
@@ -30,6 +39,7 @@ export default function RecordScreen() {
   const elapsedRef = useRef(0);
 
   useEffect(() => {
+    Notifications.requestPermissionsAsync();
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, []);
 
@@ -71,6 +81,14 @@ export default function RecordScreen() {
       })),
       duration
     );
+
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: '운동 완료! 💪',
+        body: '운동이 완료되었어요! 기록이 저장소에 저장됩니다.',
+      },
+      trigger: null,
+    });
 
     Alert.alert('운동 완료! 💪', `총 ${fmtElapsed(duration)} 운동했어요.`);
     reset();
