@@ -15,6 +15,7 @@ export type WorkoutSession = {
   title: string;
   date: string;
   exercises: ExerciseEntry[];
+  duration?: number; // 초 단위 세션 소요시간
 };
 
 const SESSIONS_KEY = 'workout_sessions';
@@ -31,7 +32,8 @@ async function saveSessions(sessions: WorkoutSession[]): Promise<void> {
 export async function saveWorkout(
   title: string,
   date: string,
-  exercises: ExerciseEntry[]
+  exercises: ExerciseEntry[],
+  duration?: number
 ): Promise<void> {
   const sessions = await loadSessions();
   const newSession: WorkoutSession = {
@@ -39,6 +41,7 @@ export async function saveWorkout(
     title,
     date,
     exercises,
+    duration,
   };
   await saveSessions([newSession, ...sessions]);
 }

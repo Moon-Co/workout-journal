@@ -57,6 +57,12 @@ export default function HomeScreen() {
     );
   }
 
+  function fmtDuration(secs: number) {
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return m > 0 ? `${m}분 ${s}초` : `${s}초`;
+  }
+
   return (
     <View style={styles.container}>
       <Text style={styles.header}>운동일지</Text>
@@ -98,10 +104,17 @@ export default function HomeScreen() {
                 ))}
               </View>
 
-              {/* 총 볼륨 */}
-              <Text style={styles.volume}>
-                총 볼륨  <Text style={styles.volumeNum}>{totalVolume(session).toLocaleString()} kg</Text>
-              </Text>
+              {/* 총 볼륨 + 운동 시간 */}
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Text style={styles.volume}>
+                  총 볼륨  <Text style={styles.volumeNum}>{totalVolume(session).toLocaleString()} kg</Text>
+                </Text>
+                {session.duration != null && (
+                  <Text style={styles.volume}>
+                    ⏱  <Text style={styles.volumeNum}>{fmtDuration(session.duration)}</Text>
+                  </Text>
+                )}
+              </View>
             </View>
           ))}
         </ScrollView>
