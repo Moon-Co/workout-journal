@@ -18,9 +18,11 @@ export type ExerciseEntry = {
 type WorkoutStore = {
   title: string;
   note: string;
+  routineId: string | null; // null = 새 운동, string = 루틴에서 출발
   exercises: ExerciseEntry[];
   setTitle: (title: string) => void;
   setNote: (note: string) => void;
+  setRoutineId: (id: string | null) => void;
   addExercise: (exerciseId: string, name: string, bodyPart: string) => void;
   removeExercise: (id: string) => void;
   addSet: (id: string) => void;
@@ -34,10 +36,12 @@ type WorkoutStore = {
 export const useWorkoutStore = create<WorkoutStore>((set) => ({
   title: '',
   note: '',
+  routineId: null,
   exercises: [],
 
   setTitle: (title) => set({ title }),
   setNote: (note) => set({ note }),
+  setRoutineId: (id) => set({ routineId: id }),
 
   addExercise: (exerciseId, name, bodyPart) =>
     set((s) => ({
@@ -110,5 +114,5 @@ export const useWorkoutStore = create<WorkoutStore>((set) => ({
       ),
     })),
 
-  reset: () => set({ title: '', note: '', exercises: [] }),
+  reset: () => set({ title: '', note: '', routineId: null, exercises: [] }),
 }));

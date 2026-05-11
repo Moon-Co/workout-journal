@@ -11,7 +11,7 @@ import { useWorkoutStore } from '@/store/workoutStore';
 export default function RoutineScreen() {
   const { routines, addRoutine, deleteRoutine } = useRoutineStore();
   const { bodyParts, exercises: library } = useLibraryStore();
-  const { reset, setTitle, addExercise } = useWorkoutStore();
+  const { reset, setTitle, addExercise, setRoutineId } = useWorkoutStore();
 
   const [createModal, setCreateModal] = useState(false);
   const [routineName, setRoutineName] = useState('');
@@ -39,6 +39,7 @@ export default function RoutineScreen() {
   function handleStart(routine: Routine) {
     reset();
     setTitle(routine.name);
+    setRoutineId(routine.id);
     routine.exercises.forEach(e => {
       addExercise(e.exerciseId, e.name, e.bodyPartId);
     });

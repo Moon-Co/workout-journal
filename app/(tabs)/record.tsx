@@ -7,6 +7,8 @@ import { useFocusEffect } from '@react-navigation/core';
 import { useWorkoutStore } from '@/store/workoutStore';
 import { useLibraryStore } from '@/store/libraryStore';
 import { saveWorkout, getPRs } from '@/db/database';
+import { useRoutineStore } from '@/store/routineStore';
+import { requestNotificationPermission, sendNotification } from '@/utils/notify';
 import WorkoutTimer from '@/components/WorkoutTimer';
 import ExercisePicker from '@/components/ExercisePicker';
 
@@ -27,11 +29,12 @@ function calcOneRM(weight: string, reps: string): string | null {
 
 export default function RecordScreen() {
   const {
-    title, note, exercises, setTitle, setNote,
+    title, note, routineId, exercises, setTitle, setNote,
     addExercise, removeExercise, addSet, removeSet,
     updateSet, toggleSetComplete, updateExerciseNote, reset,
   } = useWorkoutStore();
   const { bodyParts } = useLibraryStore();
+  const { addRoutine, updateRoutine } = useRoutineStore();
 
   const [isActive, setIsActive] = useState(false);
   const [elapsed, setElapsed] = useState(0);
@@ -42,18 +45,7 @@ export default function RecordScreen() {
   const elapsedRef = useRef(0);
 
   useEffect(() => {
-    if (Platform.OS !== 'web') {
-      import('expo-notifications').then(n => {
-        n.setNotificationHandler({
-          handleNotification: async () => ({
-            shouldShowAlert: true,
-            shouldPlaySound: false,
-            shouldSetBadge: false,
-          }),
-        });
-        n.requestPermissionsAsync();
-      }).catch(() => {});
-    }
+    requestNotificationPermission();
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, []);
 
@@ -98,19 +90,7 @@ export default function RecordScreen() {
     );
 
     Alert.alert('운동 완료! 💪', `총 ${fmtElapsed(duration)} 운동했어요.`);
-
-    if (Platform.OS !== 'web') {
-      try {
-        const n = await import('expo-notifications');
-        await n.scheduleNotificationAsync({
-          content: {
-            title: '운동 완료! 💪',
-            body: '운동이 완료되었어요! 기록이 저장소에 저장됩니다.',
-          },
-          trigger: null,
-        });
-      } catch (_) {}
-    }
+    await sendNotification('운동 완료! 💪', '운동이 완료되었어요! 기록이 저장소에 저장됩니다.');
 
     reset();
     setIsActive(false);
