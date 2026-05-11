@@ -3,51 +3,86 @@ import {
   View, Text, ScrollView, TouchableOpacity,
   StyleSheet, Alert, RefreshControl,
 } from 'react-native';
+import { router } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/core';
 import { getAllSessions, updateSession, deleteSession, WorkoutSession } from '@/db/database';
+import { useWorkoutStore } from '@/store/workoutStore';
 import SessionEditModal from '@/components/SessionEditModal';
+
+const DAYS = ['월', '화', '수', '목', '금', '토', '일'];
+
+function buildCalendar(year: number, month: number, workoutDates: Set<string>) {
+  const firstDay = new Date(year, month, 1);
+  const lastDay = new Date(year, month + 1, 0);
+  const startDow = (firstDay.getDay() + 6) % 7; // 월=0
+  const cells: (number | null)[] = [];
+  for (let i = 0; i < startDow; i++) cells.push(null);
+  for (let d = 1; d <= lastDay.getDate(); d++) cells.push(d);
+  while (cells.length % 7 !== 0) cells.push(null);
+  return cells;
+}
+
+function pad(n: number) { return n.toString().padStart(2, '0'); }
+
+function fmtDuration(secs: number) {
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  return m > 0 ? `${m}분 ${s > 0 ? s + '초' : ''}` : `${s}초`;
+}
 
 export default function HomeScreen() {
   const [sessions, setSessions] = useState<WorkoutSession[]>([]);
   const [editing, setEditing] = useState<WorkoutSession | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [calMonth, setCalMonth] = useState(() => {
+    const d = new Date();
+    return { year: d.getFullYear(), month: d.getMonth() };
+  });
 
-  async function loadSessions() {
-    setSessions(await getAllSessions());
-  }
+  const { reset, setTitle, addExercise } = useWorkoutStore();
 
-  // 탭 포커스될 때마다 새로고침
   useFocusEffect(
-    useCallback(() => { loadSessions(); }, [])
+    useCallback(() => { getAllSessions().then(setSessions); }, [])
   );
 
   async function onRefresh() {
     setRefreshing(true);
-    await loadSessions();
+    await getAllSessions().then(setSessions);
     setRefreshing(false);
   }
 
   async function handleSave(updated: WorkoutSession) {
     await updateSession(updated);
     setEditing(null);
-    await loadSessions();
+    getAllSessions().then(setSessions);
   }
 
   function handleDeleteConfirm(session: WorkoutSession) {
-    Alert.alert(
-      '기록 삭제',
-      `"${session.title}" 기록을 삭제할까요?`,
-      [
-        { text: '취소', style: 'cancel' },
-        {
-          text: '삭제', style: 'destructive',
-          onPress: async () => {
-            await deleteSession(session.id);
-            await loadSessions();
-          },
+    Alert.alert('기록 삭제', `"${session.title}" 기록을 삭제할까요?`, [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '삭제', style: 'destructive', onPress: async () => {
+          await deleteSession(session.id);
+          getAllSessions().then(setSessions);
         },
-      ]
-    );
+      },
+    ]);
+  }
+
+  function handleCopy(session: WorkoutSession) {
+    Alert.alert('운동 복사', `"${session.title}" 운동을 오늘 기록으로 불러올까요?`, [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '불러오기', onPress: () => {
+          reset();
+          setTitle(session.title);
+          session.exercises.forEach(e =>
+            addExercise(e.name, e.name, '')
+          );
+          router.push('/(tabs)/record');
+        },
+      },
+    ]);
   }
 
   function totalVolume(session: WorkoutSession) {
@@ -57,32 +92,102 @@ export default function HomeScreen() {
     );
   }
 
-  function fmtDuration(secs: number) {
-    const m = Math.floor(secs / 60);
-    const s = secs % 60;
-    return m > 0 ? `${m}분 ${s}초` : `${s}초`;
+  // 캘린더 데이터
+  const { year, month } = calMonth;
+  const workoutDates = new Set(sessions.map(s => s.date));
+  const today = new Date().toISOString().split('T')[0];
+  const cells = buildCalendar(year, month, workoutDates);
+
+  function prevMonth() {
+    setCalMonth(prev => {
+      if (prev.month === 0) return { year: prev.year - 1, month: 11 };
+      return { year: prev.year, month: prev.month - 1 };
+    });
   }
+  function nextMonth() {
+    setCalMonth(prev => {
+      if (prev.month === 11) return { year: prev.year + 1, month: 0 };
+      return { year: prev.year, month: prev.month + 1 };
+    });
+  }
+
+  const monthStr = `${year}-${pad(month + 1)}`;
+  const monthSessions = sessions.filter(s => s.date.startsWith(monthStr));
 
   return (
     <View style={styles.container}>
-      <Text style={styles.header}>운동일지</Text>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#6C63FF" />}
+      >
+        <Text style={styles.header}>운동일지</Text>
 
-      {sessions.length === 0 ? (
-        <View style={styles.emptyBox}>
-          <Text style={styles.emptyText}>아직 기록이 없어요</Text>
-          <Text style={styles.emptySubText}>운동 탭에서 첫 기록을 시작해보세요 💪</Text>
+        {/* ── 캘린더 ── */}
+        <View style={styles.calCard}>
+          <View style={styles.calHeader}>
+            <TouchableOpacity onPress={prevMonth} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Text style={styles.calArrow}>‹</Text>
+            </TouchableOpacity>
+            <Text style={styles.calTitle}>
+              {year}년 {month + 1}월 · {monthSessions.length}회
+            </Text>
+            <TouchableOpacity onPress={nextMonth} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Text style={styles.calArrow}>›</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* 요일 헤더 */}
+          <View style={styles.calRow}>
+            {DAYS.map(d => (
+              <Text key={d} style={styles.calDayHeader}>{d}</Text>
+            ))}
+          </View>
+
+          {/* 날짜 */}
+          {Array.from({ length: cells.length / 7 }, (_, wi) => (
+            <View key={wi} style={styles.calRow}>
+              {cells.slice(wi * 7, wi * 7 + 7).map((day, di) => {
+                if (!day) return <View key={di} style={styles.calCell} />;
+                const dateStr = `${year}-${pad(month + 1)}-${pad(day)}`;
+                const hasWorkout = workoutDates.has(dateStr);
+                const isToday = dateStr === today;
+                return (
+                  <View key={di} style={styles.calCell}>
+                    <View style={[
+                      styles.calDot,
+                      hasWorkout && styles.calDotWorkout,
+                      isToday && styles.calDotToday,
+                    ]}>
+                      <Text style={[
+                        styles.calDayText,
+                        hasWorkout && styles.calDayTextWorkout,
+                        isToday && styles.calDayTextToday,
+                      ]}>
+                        {day}
+                      </Text>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          ))}
         </View>
-      ) : (
-        <ScrollView
-          contentContainerStyle={styles.list}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#6C63FF" />}
-        >
-          {sessions.map((session) => (
+
+        {/* ── 기록 목록 ── */}
+        {sessions.length === 0 ? (
+          <View style={styles.emptyBox}>
+            <Text style={styles.emptyText}>아직 기록이 없어요</Text>
+            <Text style={styles.emptySubText}>기록 탭에서 첫 운동을 시작해보세요 💪</Text>
+          </View>
+        ) : (
+          sessions.map((session) => (
             <View key={session.id} style={styles.card}>
-              {/* 날짜 + 버튼 */}
               <View style={styles.cardHeader}>
                 <Text style={styles.cardDate}>{session.date}</Text>
                 <View style={styles.cardActions}>
+                  <TouchableOpacity style={styles.copyBtn} onPress={() => handleCopy(session)}>
+                    <Text style={styles.copyBtnText}>복사</Text>
+                  </TouchableOpacity>
                   <TouchableOpacity style={styles.editBtn} onPress={() => setEditing(session)}>
                     <Text style={styles.editBtnText}>수정</Text>
                   </TouchableOpacity>
@@ -92,10 +197,8 @@ export default function HomeScreen() {
                 </View>
               </View>
 
-              {/* 제목 */}
               <Text style={styles.cardTitle}>{session.title}</Text>
 
-              {/* 운동 요약 */}
               <View style={styles.exerciseList}>
                 {session.exercises.map((e, i) => (
                   <Text key={i} style={styles.exerciseItem}>
@@ -104,10 +207,13 @@ export default function HomeScreen() {
                 ))}
               </View>
 
-              {/* 총 볼륨 + 운동 시간 */}
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              {session.note ? (
+                <Text style={styles.note}>📝 {session.note}</Text>
+              ) : null}
+
+              <View style={styles.cardFooter}>
                 <Text style={styles.volume}>
-                  총 볼륨  <Text style={styles.volumeNum}>{totalVolume(session).toLocaleString()} kg</Text>
+                  볼륨  <Text style={styles.volumeNum}>{totalVolume(session).toLocaleString()} kg</Text>
                 </Text>
                 {session.duration != null && (
                   <Text style={styles.volume}>
@@ -116,9 +222,9 @@ export default function HomeScreen() {
                 )}
               </View>
             </View>
-          ))}
-        </ScrollView>
-      )}
+          ))
+        )}
+      </ScrollView>
 
       {editing && (
         <SessionEditModal
@@ -133,43 +239,76 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0f0f0f' },
+  content: { padding: 16, paddingTop: 60, paddingBottom: 40 },
   header: {
-    fontSize: 26, fontWeight: 'bold', color: '#fff',
-    paddingHorizontal: 20, paddingTop: 60, paddingBottom: 16,
+    fontSize: 26, fontWeight: 'bold', color: '#fff', marginBottom: 16,
   },
 
-  emptyBox: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 },
-  emptyText: { color: '#555', fontSize: 17, fontWeight: '600' },
+  // ── 캘린더 ──
+  calCard: {
+    backgroundColor: '#1a1a1a', borderRadius: 16, padding: 14,
+    marginBottom: 16, borderWidth: 1, borderColor: '#2a2a2a',
+  },
+  calHeader: {
+    flexDirection: 'row', justifyContent: 'space-between',
+    alignItems: 'center', marginBottom: 10,
+  },
+  calArrow: { color: '#6C63FF', fontSize: 22, fontWeight: '700', paddingHorizontal: 8 },
+  calTitle: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  calRow: { flexDirection: 'row' },
+  calDayHeader: { flex: 1, textAlign: 'center', color: '#555', fontSize: 11, paddingBottom: 6 },
+  calCell: { flex: 1, alignItems: 'center', paddingVertical: 2 },
+  calDot: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  calDotWorkout: { backgroundColor: '#6C63FF' },
+  calDotToday: { borderWidth: 1.5, borderColor: '#6C63FF' },
+  calDayText: { color: '#555', fontSize: 12 },
+  calDayTextWorkout: { color: '#fff', fontWeight: '700' },
+  calDayTextToday: { color: '#6C63FF', fontWeight: '700' },
+
+  // ── 빈 상태 ──
+  emptyBox: { alignItems: 'center', paddingVertical: 40 },
+  emptyText: { color: '#555', fontSize: 17, fontWeight: '600', marginBottom: 6 },
   emptySubText: { color: '#444', fontSize: 14 },
 
-  list: { padding: 16, paddingBottom: 40 },
-
+  // ── 세션 카드 ──
   card: {
     backgroundColor: '#1a1a1a', borderRadius: 14, padding: 16,
-    marginBottom: 14, borderWidth: 1, borderColor: '#2a2a2a',
+    marginBottom: 12, borderWidth: 1, borderColor: '#2a2a2a',
   },
-  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  cardHeader: {
+    flexDirection: 'row', justifyContent: 'space-between',
+    alignItems: 'center', marginBottom: 6,
+  },
   cardDate: { color: '#555', fontSize: 13 },
-  cardActions: { flexDirection: 'row', gap: 8 },
+  cardActions: { flexDirection: 'row', gap: 6 },
+
+  copyBtn: {
+    paddingHorizontal: 10, paddingVertical: 4,
+    borderRadius: 8, borderWidth: 1, borderColor: '#4CAF50',
+  },
+  copyBtnText: { color: '#4CAF50', fontSize: 12, fontWeight: '600' },
 
   editBtn: {
-    paddingHorizontal: 12, paddingVertical: 4,
+    paddingHorizontal: 10, paddingVertical: 4,
     borderRadius: 8, borderWidth: 1, borderColor: '#6C63FF',
   },
-  editBtnText: { color: '#6C63FF', fontSize: 13, fontWeight: '600' },
+  editBtnText: { color: '#6C63FF', fontSize: 12, fontWeight: '600' },
 
   deleteBtn: {
-    paddingHorizontal: 12, paddingVertical: 4,
+    paddingHorizontal: 10, paddingVertical: 4,
     borderRadius: 8, borderWidth: 1, borderColor: '#444',
   },
-  deleteBtnText: { color: '#888', fontSize: 13 },
+  deleteBtnText: { color: '#888', fontSize: 12 },
 
-  cardTitle: { color: '#fff', fontSize: 18, fontWeight: '700', marginBottom: 10 },
+  cardTitle: { color: '#fff', fontSize: 17, fontWeight: '700', marginBottom: 10 },
 
-  exerciseList: { marginBottom: 10, gap: 3 },
-  exerciseItem: { color: '#bbb', fontSize: 14 },
+  exerciseList: { marginBottom: 8 },
+  exerciseItem: { color: '#bbb', fontSize: 14, marginBottom: 2 },
   setCount: { color: '#555', fontSize: 13 },
 
+  note: { color: '#666', fontSize: 13, marginBottom: 8, fontStyle: 'italic' },
+
+  cardFooter: { flexDirection: 'row', justifyContent: 'space-between' },
   volume: { color: '#555', fontSize: 13 },
   volumeNum: { color: '#6C63FF', fontWeight: '700' },
 });

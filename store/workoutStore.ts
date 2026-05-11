@@ -3,6 +3,7 @@ import { create } from 'zustand';
 export type SetEntry = {
   weight: string;
   reps: string;
+  completed: boolean;
 };
 
 export type ExerciseEntry = {
@@ -15,21 +16,26 @@ export type ExerciseEntry = {
 
 type WorkoutStore = {
   title: string;
+  note: string;
   exercises: ExerciseEntry[];
   setTitle: (title: string) => void;
+  setNote: (note: string) => void;
   addExercise: (exerciseId: string, name: string, bodyPart: string) => void;
   removeExercise: (id: string) => void;
   addSet: (id: string) => void;
   removeSet: (id: string, setIndex: number) => void;
-  updateSet: (id: string, setIndex: number, field: keyof SetEntry, value: string) => void;
+  updateSet: (id: string, setIndex: number, field: 'weight' | 'reps', value: string) => void;
+  toggleSetComplete: (id: string, setIndex: number) => void;
   reset: () => void;
 };
 
 export const useWorkoutStore = create<WorkoutStore>((set) => ({
   title: '',
+  note: '',
   exercises: [],
 
   setTitle: (title) => set({ title }),
+  setNote: (note) => set({ note }),
 
   addExercise: (exerciseId, name, bodyPart) =>
     set((s) => ({
@@ -40,7 +46,7 @@ export const useWorkoutStore = create<WorkoutStore>((set) => ({
           exerciseId,
           name,
           bodyPart,
-          sets: [{ weight: '', reps: '' }],
+          sets: [{ weight: '', reps: '', completed: false }],
         },
       ],
     })),
@@ -51,7 +57,9 @@ export const useWorkoutStore = create<WorkoutStore>((set) => ({
   addSet: (id) =>
     set((s) => ({
       exercises: s.exercises.map((e) =>
-        e.id === id ? { ...e, sets: [...e.sets, { weight: '', reps: '' }] } : e
+        e.id === id
+          ? { ...e, sets: [...e.sets, { weight: '', reps: '', completed: false }] }
+          : e
       ),
     })),
 
@@ -78,5 +86,19 @@ export const useWorkoutStore = create<WorkoutStore>((set) => ({
       ),
     })),
 
-  reset: () => set({ title: '', exercises: [] }),
+  toggleSetComplete: (id, setIndex) =>
+    set((s) => ({
+      exercises: s.exercises.map((e) =>
+        e.id === id
+          ? {
+              ...e,
+              sets: e.sets.map((st, i) =>
+                i === setIndex ? { ...st, completed: !st.completed } : st
+              ),
+            }
+          : e
+      ),
+    })),
+
+  reset: () => set({ title: '', note: '', exercises: [] }),
 }));

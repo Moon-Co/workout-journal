@@ -15,10 +15,18 @@ export type WorkoutSession = {
   title: string;
   date: string;
   exercises: ExerciseEntry[];
-  duration?: number; // 초 단위 세션 소요시간
+  duration?: number;
+  note?: string;
+};
+
+export type BodyWeight = {
+  id: string;
+  date: string;
+  weight: number;
 };
 
 const SESSIONS_KEY = 'workout_sessions';
+const BODYWEIGHT_KEY = 'body_weights';
 
 async function loadSessions(): Promise<WorkoutSession[]> {
   const raw = await AsyncStorage.getItem(SESSIONS_KEY);
@@ -33,7 +41,8 @@ export async function saveWorkout(
   title: string,
   date: string,
   exercises: ExerciseEntry[],
-  duration?: number
+  duration?: number,
+  note?: string
 ): Promise<void> {
   const sessions = await loadSessions();
   const newSession: WorkoutSession = {
@@ -42,6 +51,7 @@ export async function saveWorkout(
     date,
     exercises,
     duration,
+    note,
   };
   await saveSessions([newSession, ...sessions]);
 }
@@ -58,4 +68,56 @@ export async function updateSession(updated: WorkoutSession): Promise<void> {
 export async function deleteSession(id: string): Promise<void> {
   const sessions = await loadSessions();
   await saveSessions(sessions.filter((s) => s.id !== id));
+}
+
+// ── 체중 ──────────────────────────────────────────
+export async function getBodyWeights(): Promise<BodyWeight[]> {
+  const raw = await AsyncStorage.getItem(BODYWEIGHT_KEY);
+  return raw ? JSON.parse(raw) : [];
+}
+
+export async function saveBodyWeight(weight: number, date: string): Promise<void> {
+  const entries = await getBodyWeights();
+  const idx = entries.findIndex(e => e.date === date);
+  if (idx >= 0) {
+    entries[idx] = { ...entries[idx], weight };
+  } else {
+    entries.unshift({ id: Date.now().toString(), date, weight });
+  }
+  await AsyncStorage.setItem(BODYWEIGHT_KEY, JSON.stringify(entries));
+}
+
+export async function deleteBodyWeight(id: string): Promise<void> {
+  const entries = await getBodyWeights();
+  await AsyncStorage.setItem(BODYWEIGHT_KEY, JSON.stringify(entries.filter(e => e.id !== id)));
+}
+
+// ── PR (종목별 최고 무게) ───────────────────────────
+export async function getPRs(): Promise<Record<string, number>> {
+  const sessions = await loadSessions();
+  const prs: Record<string, number> = {};
+  for (const session of sessions) {
+    for (const exercise of session.exercises) {
+      const maxWeight = Math.max(...exercise.sets.map(s => s.weight));
+      if (!prs[exercise.name] || maxWeight > prs[exercise.name]) {
+        prs[exercise.name] = maxWeight;
+      }
+    }
+  }
+  return prs;
+}
+
+// ── 백업 / 복원 ────────────────────────────────────
+export async function exportAllData(): Promise<string> {
+  const sessions = await loadSessions();
+  const bodyWeights = await getBodyWeights();
+  return JSON.stringify({ sessions, bodyWeights }, null, 2);
+}
+
+export async function importAllData(json: string): Promise<void> {
+  const data = JSON.parse(json);
+  if (data.sessions) await saveSessions(data.sessions);
+  if (data.bodyWeights) {
+    await AsyncStorage.setItem(BODYWEIGHT_KEY, JSON.stringify(data.bodyWeights));
+  }
 }

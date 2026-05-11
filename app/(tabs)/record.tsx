@@ -1,11 +1,12 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
   ScrollView, StyleSheet, Alert, KeyboardAvoidingView, Platform,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/core';
 import { useWorkoutStore } from '@/store/workoutStore';
 import { useLibraryStore } from '@/store/libraryStore';
-import { saveWorkout } from '@/db/database';
+import { saveWorkout, getPRs } from '@/db/database';
 import WorkoutTimer from '@/components/WorkoutTimer';
 import ExercisePicker from '@/components/ExercisePicker';
 
@@ -15,16 +16,27 @@ function fmtElapsed(secs: number) {
   return `${m}:${s}`;
 }
 
+// Epley 공식 1RM 계산
+function calcOneRM(weight: string, reps: string): string | null {
+  const w = parseFloat(weight);
+  const r = parseInt(reps, 10);
+  if (!w || !r || r <= 0) return null;
+  if (r === 1) return w.toFixed(1);
+  return (w * (1 + r / 30)).toFixed(1);
+}
+
 export default function RecordScreen() {
   const {
-    title, exercises, setTitle,
-    addExercise, removeExercise, addSet, removeSet, updateSet, reset,
+    title, note, exercises, setTitle, setNote,
+    addExercise, removeExercise, addSet, removeSet,
+    updateSet, toggleSetComplete, reset,
   } = useWorkoutStore();
   const { bodyParts } = useLibraryStore();
 
   const [isActive, setIsActive] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [pickerVisible, setPickerVisible] = useState(false);
+  const [prs, setPRs] = useState<Record<string, number>>({});
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const elapsedRef = useRef(0);
@@ -45,6 +57,12 @@ export default function RecordScreen() {
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, []);
 
+  useFocusEffect(
+    useCallback(() => {
+      getPRs().then(setPRs);
+    }, [])
+  );
+
   function startSession() {
     elapsedRef.current = 0;
     setElapsed(0);
@@ -56,15 +74,9 @@ export default function RecordScreen() {
   }
 
   async function finishSession() {
-    if (exercises.length === 0) {
-      Alert.alert('운동을 추가해주세요');
-      return;
-    }
+    if (exercises.length === 0) { Alert.alert('운동을 추가해주세요'); return; }
     const valid = exercises.every(e => e.sets.every(s => s.weight && s.reps));
-    if (!valid) {
-      Alert.alert('모든 세트의 무게와 횟수를 입력해주세요');
-      return;
-    }
+    if (!valid) { Alert.alert('모든 세트의 무게와 횟수를 입력해주세요'); return; }
 
     if (intervalRef.current) clearInterval(intervalRef.current);
     const duration = elapsedRef.current;
@@ -72,8 +84,7 @@ export default function RecordScreen() {
     const finalTitle = title.trim() || `운동 ${today}`;
 
     await saveWorkout(
-      finalTitle,
-      today,
+      finalTitle, today,
       exercises.map(e => ({
         name: e.name,
         sets: e.sets.map(s => ({
@@ -81,7 +92,8 @@ export default function RecordScreen() {
           reps: parseInt(s.reps, 10),
         })),
       })),
-      duration
+      duration,
+      note.trim() || undefined
     );
 
     Alert.alert('운동 완료! 💪', `총 ${fmtElapsed(duration)} 운동했어요.`);
@@ -98,10 +110,12 @@ export default function RecordScreen() {
         });
       } catch (_) {}
     }
+
     reset();
     setIsActive(false);
     setElapsed(0);
     elapsedRef.current = 0;
+    getPRs().then(setPRs);
   }
 
   const alreadySelected = exercises.map(e => e.exerciseId);
@@ -111,17 +125,12 @@ export default function RecordScreen() {
       style={{ flex: 1, backgroundColor: '#0f0f0f' }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      {/* ── 휴식 타이머 (좌상단 floating) ── */}
       <WorkoutTimer />
 
-      {/* ── 헤더 ── */}
+      {/* 헤더 */}
       <View style={styles.header}>
-        {/* 좌측 타이머 공간 확보 */}
         <View style={{ width: 80 }} />
-
         <Text style={styles.headerTitle}>운동 기록</Text>
-
-        {/* 우측: 세션 경과시간 + 완료 */}
         {isActive ? (
           <View style={styles.headerRight}>
             <Text style={styles.elapsed}>{fmtElapsed(elapsed)}</Text>
@@ -134,10 +143,7 @@ export default function RecordScreen() {
         )}
       </View>
 
-      <ScrollView
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
-      >
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         {/* 제목 */}
         <TextInput
           style={styles.titleInput}
@@ -147,76 +153,109 @@ export default function RecordScreen() {
           placeholderTextColor="#555"
         />
 
-        {/* 빈 상태 */}
         {exercises.length === 0 && (
           <View style={styles.emptyBox}>
-            <Text style={styles.emptyText}>운동을 추가해보세요</Text>
+            <Text style={styles.emptyText}>아래 버튼으로 운동을 추가해보세요</Text>
           </View>
         )}
 
         {/* 운동 카드 */}
-        {exercises.map(ex => (
-          <View key={ex.id} style={styles.exerciseCard}>
-            <View style={styles.cardHeader}>
-              <View>
-                <Text style={styles.exerciseName}>{ex.name}</Text>
-                <Text style={styles.bpLabel}>
-                  {bodyParts.find(b => b.id === ex.bodyPart)?.name ?? ex.bodyPart}
-                </Text>
+        {exercises.map(ex => {
+          const lastSet = ex.sets[ex.sets.length - 1];
+          const oneRM = calcOneRM(lastSet.weight, lastSet.reps);
+          const isPR = lastSet.weight && prs[ex.name] &&
+            parseFloat(lastSet.weight) > prs[ex.name];
+          const completedCount = ex.sets.filter(s => s.completed).length;
+
+          return (
+            <View key={ex.id} style={styles.exerciseCard}>
+              <View style={styles.cardHeader}>
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Text style={styles.exerciseName}>{ex.name}</Text>
+                    {isPR && <Text style={styles.prBadge}>🏆 PR</Text>}
+                  </View>
+                  <Text style={styles.bpLabel}>
+                    {bodyParts.find(b => b.id === ex.bodyPart)?.name ?? ex.bodyPart}
+                    {' · '}{completedCount}/{ex.sets.length} 세트 완료
+                  </Text>
+                </View>
+                <TouchableOpacity onPress={() => removeExercise(ex.id)}>
+                  <Text style={styles.deleteBtn}>✕</Text>
+                </TouchableOpacity>
               </View>
-              <TouchableOpacity onPress={() => removeExercise(ex.id)}>
-                <Text style={styles.deleteBtn}>✕</Text>
-              </TouchableOpacity>
-            </View>
 
-            <View style={styles.setRow}>
-              <Text style={[styles.setLabel, { width: 32 }]}>세트</Text>
-              <Text style={[styles.setLabel, { flex: 1 }]}>무게 (kg)</Text>
-              <Text style={[styles.setLabel, { flex: 1 }]}>횟수</Text>
-              <View style={{ width: 28 }} />
-            </View>
+              <View style={styles.setRow}>
+                <View style={{ width: 28 }} />
+                <Text style={[styles.setLabel, { width: 32 }]}>세트</Text>
+                <Text style={[styles.setLabel, { flex: 1 }]}>무게 (kg)</Text>
+                <Text style={[styles.setLabel, { flex: 1 }]}>횟수</Text>
+                <View style={{ width: 28 }} />
+              </View>
 
-            {ex.sets.map((set, sIdx) => (
-              <View key={sIdx} style={styles.setRow}>
-                <Text style={[styles.setNum, { width: 32 }]}>{sIdx + 1}</Text>
-                <TextInput
-                  style={[styles.setInput, { flex: 1, marginRight: 8 }]}
-                  placeholder="0" placeholderTextColor="#555"
-                  keyboardType="numeric" value={set.weight}
-                  onChangeText={v => updateSet(ex.id, sIdx, 'weight', v)}
-                />
-                <TextInput
-                  style={[styles.setInput, { flex: 1 }]}
-                  placeholder="0" placeholderTextColor="#555"
-                  keyboardType="numeric" value={set.reps}
-                  onChangeText={v => updateSet(ex.id, sIdx, 'reps', v)}
-                />
-                {ex.sets.length > 1 ? (
+              {ex.sets.map((set, sIdx) => (
+                <View key={sIdx} style={[styles.setRow, set.completed && styles.setRowDone]}>
+                  {/* 완료 체크박스 */}
                   <TouchableOpacity
-                    style={{ width: 28, alignItems: 'center' }}
-                    onPress={() => removeSet(ex.id, sIdx)}
+                    style={[styles.checkbox, set.completed && styles.checkboxOn]}
+                    onPress={() => toggleSetComplete(ex.id, sIdx)}
                   >
-                    <Text style={styles.deleteBtn}>✕</Text>
+                    {set.completed && <Text style={styles.checkmark}>✓</Text>}
                   </TouchableOpacity>
-                ) : <View style={{ width: 28 }} />}
-              </View>
-            ))}
+                  <Text style={[styles.setNum, { width: 32 }]}>{sIdx + 1}</Text>
+                  <TextInput
+                    style={[styles.setInput, { flex: 1, marginRight: 8 }, set.completed && styles.setInputDone]}
+                    placeholder="0" placeholderTextColor="#555"
+                    keyboardType="numeric" value={set.weight}
+                    onChangeText={v => updateSet(ex.id, sIdx, 'weight', v)}
+                    editable={!set.completed}
+                  />
+                  <TextInput
+                    style={[styles.setInput, { flex: 1 }, set.completed && styles.setInputDone]}
+                    placeholder="0" placeholderTextColor="#555"
+                    keyboardType="numeric" value={set.reps}
+                    onChangeText={v => updateSet(ex.id, sIdx, 'reps', v)}
+                    editable={!set.completed}
+                  />
+                  {ex.sets.length > 1 ? (
+                    <TouchableOpacity
+                      style={{ width: 28, alignItems: 'center' }}
+                      onPress={() => removeSet(ex.id, sIdx)}
+                    >
+                      <Text style={styles.deleteBtn}>✕</Text>
+                    </TouchableOpacity>
+                  ) : <View style={{ width: 28 }} />}
+                </View>
+              ))}
 
-            <TouchableOpacity style={styles.addSetBtn} onPress={() => addSet(ex.id)}>
-              <Text style={styles.addSetBtnText}>+ 세트 추가</Text>
-            </TouchableOpacity>
-          </View>
-        ))}
+              <View style={styles.cardFooter}>
+                <TouchableOpacity style={styles.addSetBtn} onPress={() => addSet(ex.id)}>
+                  <Text style={styles.addSetBtnText}>+ 세트 추가</Text>
+                </TouchableOpacity>
+                {oneRM && (
+                  <Text style={styles.oneRM}>예상 1RM: {oneRM} kg</Text>
+                )}
+              </View>
+            </View>
+          );
+        })}
 
         {/* + 운동 추가 */}
-        <TouchableOpacity
-          style={styles.addExBtn}
-          onPress={() => setPickerVisible(true)}
-        >
+        <TouchableOpacity style={styles.addExBtn} onPress={() => setPickerVisible(true)}>
           <Text style={styles.addExBtnText}>+ 운동 추가</Text>
         </TouchableOpacity>
 
-        {/* 운동 시작 버튼 (세션 미시작 상태) */}
+        {/* 메모 */}
+        <TextInput
+          style={styles.noteInput}
+          value={note}
+          onChangeText={setNote}
+          placeholder="운동 메모 (컨디션, 특이사항 등)"
+          placeholderTextColor="#555"
+          multiline
+        />
+
+        {/* 운동 시작 */}
         {!isActive && (
           <TouchableOpacity style={styles.startBtn} onPress={startSession}>
             <Text style={styles.startBtnText}>운동 시작! 🔥</Text>
@@ -240,23 +279,15 @@ const HEADER_TOP = Platform.OS === 'ios' ? 54 : 32;
 
 const styles = StyleSheet.create({
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingTop: HEADER_TOP,
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#1a1a1a',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingTop: HEADER_TOP, paddingHorizontal: 16, paddingBottom: 12,
+    borderBottomWidth: 1, borderBottomColor: '#1a1a1a',
   },
   headerTitle: { color: '#fff', fontSize: 17, fontWeight: '700' },
-
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  elapsed: { color: '#4CAF50', fontSize: 16, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  elapsed: { color: '#4CAF50', fontSize: 16, fontWeight: '700' },
   doneBtn: {
-    backgroundColor: '#6C63FF',
-    paddingHorizontal: 14, paddingVertical: 6,
-    borderRadius: 10,
+    backgroundColor: '#6C63FF', paddingHorizontal: 14, paddingVertical: 6, borderRadius: 10,
   },
   doneBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
 
@@ -269,9 +300,8 @@ const styles = StyleSheet.create({
   },
 
   emptyBox: {
-    padding: 40, alignItems: 'center',
-    borderRadius: 12, borderWidth: 1,
-    borderColor: '#2a2a2a', borderStyle: 'dashed', marginBottom: 16,
+    padding: 40, alignItems: 'center', borderRadius: 12,
+    borderWidth: 1, borderColor: '#2a2a2a', borderStyle: 'dashed', marginBottom: 16,
   },
   emptyText: { color: '#444', fontSize: 15 },
 
@@ -284,18 +314,36 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start', marginBottom: 12,
   },
   exerciseName: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  prBadge: { fontSize: 12, marginLeft: 6, color: '#FFD700' },
   bpLabel: { color: '#6C63FF', fontSize: 12, marginTop: 2 },
   deleteBtn: { color: '#ff4444', fontSize: 16, paddingLeft: 12 },
 
   setRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  setRowDone: { opacity: 0.45 },
   setLabel: { color: '#666', fontSize: 12, textAlign: 'center' },
   setNum: { color: '#888', fontSize: 14, textAlign: 'center' },
   setInput: {
     backgroundColor: '#252525', borderRadius: 8, padding: 10,
     color: '#fff', fontSize: 15, textAlign: 'center',
   },
-  addSetBtn: { marginTop: 4, alignSelf: 'flex-start' },
+  setInputDone: { backgroundColor: '#1c1c1c' },
+
+  checkbox: {
+    width: 22, height: 22, borderRadius: 6,
+    borderWidth: 2, borderColor: '#333',
+    alignItems: 'center', justifyContent: 'center',
+    marginRight: 4,
+  },
+  checkboxOn: { backgroundColor: '#4CAF50', borderColor: '#4CAF50' },
+  checkmark: { color: '#fff', fontSize: 12, fontWeight: 'bold' },
+
+  cardFooter: {
+    flexDirection: 'row', justifyContent: 'space-between',
+    alignItems: 'center', marginTop: 4,
+  },
+  addSetBtn: { alignSelf: 'flex-start' },
   addSetBtnText: { color: '#6C63FF', fontSize: 14, fontWeight: '600' },
+  oneRM: { color: '#888', fontSize: 12 },
 
   addExBtn: {
     borderWidth: 1.5, borderColor: '#6C63FF', borderStyle: 'dashed',
@@ -303,9 +351,15 @@ const styles = StyleSheet.create({
   },
   addExBtnText: { color: '#6C63FF', fontSize: 16, fontWeight: '600' },
 
+  noteInput: {
+    backgroundColor: '#1a1a1a', borderRadius: 12, padding: 14,
+    color: '#fff', fontSize: 14, minHeight: 60,
+    borderWidth: 1, borderColor: '#2a2a2a', marginBottom: 12,
+    textAlignVertical: 'top',
+  },
+
   startBtn: {
-    backgroundColor: '#6C63FF', borderRadius: 14,
-    padding: 18, alignItems: 'center', marginTop: 4,
+    backgroundColor: '#6C63FF', borderRadius: 14, padding: 18, alignItems: 'center',
   },
   startBtnText: { color: '#fff', fontSize: 18, fontWeight: '800' },
 });
