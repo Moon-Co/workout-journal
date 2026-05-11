@@ -18,11 +18,15 @@ export type ExerciseEntry = {
 type WorkoutStore = {
   title: string;
   note: string;
-  routineId: string | null; // null = 새 운동, string = 루틴에서 출발
+  routineId: string | null;
+  sessionActive: boolean;
+  sessionStartTime: number | null; // Date.now() 기준 시작 시각
   exercises: ExerciseEntry[];
   setTitle: (title: string) => void;
   setNote: (note: string) => void;
   setRoutineId: (id: string | null) => void;
+  startSession: () => void;
+  endSession: () => void;
   addExercise: (exerciseId: string, name: string, bodyPart: string) => void;
   removeExercise: (id: string) => void;
   addSet: (id: string) => void;
@@ -37,11 +41,15 @@ export const useWorkoutStore = create<WorkoutStore>((set) => ({
   title: '',
   note: '',
   routineId: null,
+  sessionActive: false,
+  sessionStartTime: null,
   exercises: [],
 
   setTitle: (title) => set({ title }),
   setNote: (note) => set({ note }),
   setRoutineId: (id) => set({ routineId: id }),
+  startSession: () => set({ sessionActive: true, sessionStartTime: Date.now() }),
+  endSession: () => set({ sessionActive: false, sessionStartTime: null }),
 
   addExercise: (exerciseId, name, bodyPart) =>
     set((s) => ({
@@ -114,5 +122,8 @@ export const useWorkoutStore = create<WorkoutStore>((set) => ({
       ),
     })),
 
-  reset: () => set({ title: '', note: '', routineId: null, exercises: [] }),
+  reset: () => set({
+    title: '', note: '', routineId: null,
+    sessionActive: false, sessionStartTime: null, exercises: [],
+  }),
 }));

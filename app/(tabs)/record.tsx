@@ -29,24 +29,34 @@ function calcOneRM(weight: string, reps: string): string | null {
 
 export default function RecordScreen() {
   const {
-    title, note, routineId, exercises, setTitle, setNote,
+    title, note, routineId, sessionActive, sessionStartTime,
+    exercises, setTitle, setNote,
     addExercise, removeExercise, addSet, removeSet,
-    updateSet, toggleSetComplete, updateExerciseNote, reset,
+    updateSet, toggleSetComplete, updateExerciseNote,
+    startSession, endSession, reset,
   } = useWorkoutStore();
   const { bodyParts } = useLibraryStore();
   const { addRoutine, updateRoutine } = useRoutineStore();
 
-  const [isActive, setIsActive] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [pickerVisible, setPickerVisible] = useState(false);
   const [prs, setPRs] = useState<Record<string, number>>({});
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const elapsedRef = useRef(0);
+
+  // 세션 활성 상태가 바뀔 때마다 타이머 동기화
+  useEffect(() => {
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    if (sessionActive && sessionStartTime) {
+      const tick = () => setElapsed(Math.floor((Date.now() - sessionStartTime) / 1000));
+      tick();
+      intervalRef.current = setInterval(tick, 1000);
+    }
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+  }, [sessionActive, sessionStartTime]);
 
   useEffect(() => {
     requestNotificationPermission();
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, []);
 
   useFocusEffect(
@@ -55,23 +65,12 @@ export default function RecordScreen() {
     }, [])
   );
 
-  function startSession() {
-    elapsedRef.current = 0;
-    setElapsed(0);
-    setIsActive(true);
-    intervalRef.current = setInterval(() => {
-      elapsedRef.current += 1;
-      setElapsed(elapsedRef.current);
-    }, 1000);
-  }
-
   async function finishSession() {
     if (exercises.length === 0) { Alert.alert('운동을 추가해주세요'); return; }
     const valid = exercises.every(e => e.sets.every(s => s.weight && s.reps));
     if (!valid) { Alert.alert('모든 세트의 무게와 횟수를 입력해주세요'); return; }
 
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    const duration = elapsedRef.current;
+    const duration = elapsed;
     const today = new Date().toISOString().split('T')[0];
     const finalTitle = title.trim() || `운동 ${today}`;
 
@@ -93,9 +92,6 @@ export default function RecordScreen() {
     await sendNotification('운동 완료! 💪', '운동이 완료되었어요! 기록이 저장소에 저장됩니다.');
 
     reset();
-    setIsActive(false);
-    setElapsed(0);
-    elapsedRef.current = 0;
     getPRs().then(setPRs);
   }
 
@@ -112,7 +108,7 @@ export default function RecordScreen() {
       <View style={styles.header}>
         <View style={{ width: 80 }} />
         <Text style={styles.headerTitle}>운동 기록</Text>
-        {isActive ? (
+        {sessionActive ? (
           <View style={styles.headerRight}>
             <Text style={styles.elapsed}>{fmtElapsed(elapsed)}</Text>
             <TouchableOpacity style={styles.doneBtn} onPress={finishSession}>
@@ -231,7 +227,7 @@ export default function RecordScreen() {
         })}
 
         {/* + 운동 추가 (세션 시작 후에만 표시) */}
-        {isActive ? (
+        {sessionActive ? (
           <TouchableOpacity style={styles.addExBtn} onPress={() => setPickerVisible(true)}>
             <Text style={styles.addExBtnText}>+ 운동 추가</Text>
           </TouchableOpacity>
@@ -252,8 +248,8 @@ export default function RecordScreen() {
         />
 
         {/* 운동 시작 */}
-        {!isActive && (
-          <TouchableOpacity style={styles.startBtn} onPress={startSession}>
+        {!sessionActive && (
+          <TouchableOpacity style={styles.startBtn} onPress={() => startSession()}>
             <Text style={styles.startBtnText}>운동 시작! 🔥</Text>
           </TouchableOpacity>
         )}

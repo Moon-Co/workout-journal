@@ -11,7 +11,7 @@ import { useWorkoutStore } from '@/store/workoutStore';
 export default function RoutineScreen() {
   const { routines, addRoutine, deleteRoutine } = useRoutineStore();
   const { bodyParts, exercises: library } = useLibraryStore();
-  const { reset, setTitle, addExercise, setRoutineId } = useWorkoutStore();
+  const { reset, setTitle, addExercise, setRoutineId, startSession } = useWorkoutStore();
 
   const [createModal, setCreateModal] = useState(false);
   const [routineName, setRoutineName] = useState('');
@@ -43,6 +43,7 @@ export default function RoutineScreen() {
     routine.exercises.forEach(e => {
       addExercise(e.exerciseId, e.name, e.bodyPartId);
     });
+    startSession(); // 세션 자동 시작
     router.push('/(tabs)/record');
   }
 
