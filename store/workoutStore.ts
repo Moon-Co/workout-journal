@@ -12,6 +12,7 @@ export type ExerciseEntry = {
   name: string;
   bodyPart: string;
   sets: SetEntry[];
+  note: string;
 };
 
 type WorkoutStore = {
@@ -26,6 +27,7 @@ type WorkoutStore = {
   removeSet: (id: string, setIndex: number) => void;
   updateSet: (id: string, setIndex: number, field: 'weight' | 'reps', value: string) => void;
   toggleSetComplete: (id: string, setIndex: number) => void;
+  updateExerciseNote: (id: string, note: string) => void;
   reset: () => void;
 };
 
@@ -47,6 +49,7 @@ export const useWorkoutStore = create<WorkoutStore>((set) => ({
           name,
           bodyPart,
           sets: [{ weight: '', reps: '', completed: false }],
+          note: '',
         },
       ],
     })),
@@ -97,6 +100,13 @@ export const useWorkoutStore = create<WorkoutStore>((set) => ({
               ),
             }
           : e
+      ),
+    })),
+
+  updateExerciseNote: (id, note) =>
+    set((s) => ({
+      exercises: s.exercises.map((e) =>
+        e.id === id ? { ...e, note } : e
       ),
     })),
 

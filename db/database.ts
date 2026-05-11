@@ -8,6 +8,7 @@ export type SetEntry = {
 export type ExerciseEntry = {
   name: string;
   sets: SetEntry[];
+  note?: string;
 };
 
 export type WorkoutSession = {

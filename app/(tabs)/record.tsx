@@ -29,7 +29,7 @@ export default function RecordScreen() {
   const {
     title, note, exercises, setTitle, setNote,
     addExercise, removeExercise, addSet, removeSet,
-    updateSet, toggleSetComplete, reset,
+    updateSet, toggleSetComplete, updateExerciseNote, reset,
   } = useWorkoutStore();
   const { bodyParts } = useLibraryStore();
 
@@ -87,6 +87,7 @@ export default function RecordScreen() {
       finalTitle, today,
       exercises.map(e => ({
         name: e.name,
+        note: e.note || undefined,
         sets: e.sets.map(s => ({
           weight: parseFloat(s.weight),
           reps: parseInt(s.reps, 10),
@@ -236,6 +237,15 @@ export default function RecordScreen() {
                   <Text style={styles.oneRM}>예상 1RM: {oneRM} kg</Text>
                 )}
               </View>
+
+              <TextInput
+                style={styles.exNoteInput}
+                value={ex.note}
+                onChangeText={v => updateExerciseNote(ex.id, v)}
+                placeholder="메모 (예: 그립 넓게, 느리게 내리기)"
+                placeholderTextColor="#444"
+                multiline
+              />
             </View>
           );
         })}
@@ -344,6 +354,19 @@ const styles = StyleSheet.create({
   addSetBtn: { alignSelf: 'flex-start' },
   addSetBtnText: { color: '#6C63FF', fontSize: 14, fontWeight: '600' },
   oneRM: { color: '#888', fontSize: 12 },
+
+  exNoteInput: {
+    marginTop: 10,
+    backgroundColor: '#252525',
+    borderRadius: 8,
+    padding: 10,
+    color: '#bbb',
+    fontSize: 13,
+    minHeight: 36,
+    textAlignVertical: 'top',
+    borderWidth: 1,
+    borderColor: '#333',
+  },
 
   addExBtn: {
     borderWidth: 1.5, borderColor: '#6C63FF', borderStyle: 'dashed',
