@@ -250,10 +250,16 @@ export default function RecordScreen() {
           );
         })}
 
-        {/* + 운동 추가 */}
-        <TouchableOpacity style={styles.addExBtn} onPress={() => setPickerVisible(true)}>
-          <Text style={styles.addExBtnText}>+ 운동 추가</Text>
-        </TouchableOpacity>
+        {/* + 운동 추가 (세션 시작 후에만 표시) */}
+        {isActive ? (
+          <TouchableOpacity style={styles.addExBtn} onPress={() => setPickerVisible(true)}>
+            <Text style={styles.addExBtnText}>+ 운동 추가</Text>
+          </TouchableOpacity>
+        ) : exercises.length === 0 ? (
+          <View style={styles.emptyBox}>
+            <Text style={styles.emptyText}>운동 시작 후 종목을 추가할 수 있어요</Text>
+          </View>
+        ) : null}
 
         {/* 메모 */}
         <TextInput

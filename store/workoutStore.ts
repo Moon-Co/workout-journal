@@ -44,7 +44,7 @@ export const useWorkoutStore = create<WorkoutStore>((set) => ({
       exercises: [
         ...s.exercises,
         {
-          id: Date.now().toString(),
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
           exerciseId,
           name,
           bodyPart,
